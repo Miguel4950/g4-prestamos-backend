@@ -3,6 +3,8 @@ package co.edu.javeriana.prestamos.model;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -14,6 +16,7 @@ import java.time.LocalDateTime;
 @Table(name = "prestamo") // El nombre exacto de la tabla de G1
 public class Prestamo {
     @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id_prestamo;
     private Integer id_usuario;
     private Integer id_libro;

@@ -64,8 +64,8 @@ public class LoanService {
         }
 
         // 5. ¡Todo en orden! Crear el préstamo
-        // (Ponemos 0 como ID, la BD (AUTO_INCREMENT) lo asignará)
-        Prestamo nuevoPrestamo = new Prestamo(0, usuarioId, libroId, ESTADO_SOLICITADO);
+        // Usamos null para que JPA genere el ID (AUTO_INCREMENT)
+        Prestamo nuevoPrestamo = new Prestamo(null, usuarioId, libroId, ESTADO_SOLICITADO);
         
         // 6. Actualizar la BD REAL
         libro.setCantidad_disponible(libro.getCantidad_disponible() - 1);
