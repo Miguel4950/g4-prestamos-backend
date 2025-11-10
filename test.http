@@ -1,0 +1,30 @@
+### Prueba 1: Ver mis préstamos (Usuario 103, el nuevo)
+# Este usuario empieza sin préstamos.
+GET http://localhost:8080/api/loans/my-loans
+Accept: application/json
+
+###
+### Prueba 2: Solicitar un préstamo (Libro 1, disponible)
+# Esto debería funcionar.
+POST http://localhost:8080/api/loans
+Content-Type: application/json
+
+{
+  "libro_id": 1
+}
+
+###
+### Prueba 3: Solicitar un préstamo (Libro 2, no disponible)
+# Esto debería fallar.
+POST http://localhost:8080/api/loans
+Content-Type: application/json
+
+{
+  "libro_id": 2
+}
+
+###
+### Prueba 4: Ver mis préstamos de nuevo
+# Ahora debería aparecer el préstamo del Libro 1.
+GET http://localhost:8080/api/loans/my-loans
+Accept: application/json
