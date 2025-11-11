@@ -40,22 +40,22 @@ public class LoanService {
     @Transactional // Asegura que si algo falla, se hace rollback
     public Prestamo solicitarPrestamo(Integer usuarioId, Integer libroId) throws Exception {
 
-        // 1. Validar existencia y disponibilidad con el Catálogo (G3)
-        boolean reservado = catalogClient.reservarUno(String.valueOf(libroId));
-        if (!reservado) {
-            throw new Exception("Error 400: Libro no disponible o no encontrado en Catálogo");
-        }
-
-        // 1.1 Mapear id de Catálogo (G3) al id REAL de BD (G1), si es necesario
+        // 0. Mapear id de G3 -> id real de BD (G1) y validar existencia ANTES de reservar
         Integer dbLibroId = mappingService.mapToDbId(libroId);
-        if (dbLibroId == null) dbLibroId = libroId; // por defecto, usar el mismo
-
-        // 1.2 Verificar que exista en la tabla 'libro' de la BD real
+        if (dbLibroId == null) dbLibroId = libroId;
         if (!libroRepository.existsById(dbLibroId)) {
             throw new Exception("Error 400: El id_libro=" + dbLibroId + " no existe en la BD. Configure el mapeo BOOK_ID_MAP en G4.");
         }
 
-        // 2. Validar que el usuario pueda pedir prestado (con la consulta real)
+        boolean reservado = false;
+        try {
+            // 1. Validar disponibilidad y reservar con el Catálogo (G3)
+            reservado = catalogClient.reservarUno(String.valueOf(libroId));
+            if (!reservado) {
+                throw new Exception("Error 400: Libro no disponible o no encontrado en Catálogo");
+            }
+
+            // 2. Validar que el usuario pueda pedir prestado (con la consulta real)
         List<Prestamo> prestamosDelUsuario = prestamoRepository.findActivosYVencidosByUsuarioId(usuarioId);
 
         // 3. Regla US_22 (Must Have): Validar préstamos vencidos
@@ -73,12 +73,20 @@ public class LoanService {
             throw new Exception("Error 400: Límite de 3 préstamos alcanzado");
         }
 
-        // 5. ¡Todo en orden! Crear el préstamo
-        // Usamos null para que JPA genere el ID (AUTO_INCREMENT)
-        Prestamo nuevoPrestamo = new Prestamo(null, usuarioId, dbLibroId, ESTADO_SOLICITADO);
-        
-        // 6. Guardar el préstamo en la BD REAL
-        return prestamoRepository.save(nuevoPrestamo);
+            // 5. ¡Todo en orden! Crear el préstamo
+            // Usamos null para que JPA genere el ID (AUTO_INCREMENT)
+            Prestamo nuevoPrestamo = new Prestamo(null, usuarioId, dbLibroId, ESTADO_SOLICITADO);
+
+            // 6. Guardar el préstamo en la BD REAL
+            return prestamoRepository.save(nuevoPrestamo);
+
+        } catch (Exception e) {
+            // Compensación: si reservamos en catálogo pero falló la persistencia, devolver la unidad
+            if (reservado) {
+                try { catalogClient.devolverUno(String.valueOf(libroId)); } catch (Exception ignored) {}
+            }
+            throw e;
+        }
     }
 
     // Esta es tu LÓGICA DE NEGOCIO (US_22) - AHORA CON BD REAL
