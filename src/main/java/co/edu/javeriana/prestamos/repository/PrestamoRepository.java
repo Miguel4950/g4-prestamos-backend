@@ -12,4 +12,11 @@ public interface PrestamoRepository extends JpaRepository<Prestamo, Integer> {
     // Esta es la consulta real que reemplaza tu lógica 'fake'
     @Query("SELECT p FROM Prestamo p WHERE p.id_usuario = :usuarioId AND (p.id_estado_prestamo = 2 OR p.id_estado_prestamo = 4)")
     List<Prestamo> findActivosYVencidosByUsuarioId(@Param("usuarioId") Integer usuarioId);
+
+    // Listar por estado específico
+    List<Prestamo> findByIdEstadoPrestamo(Integer id_estado_prestamo);
+
+    // Préstamos vencidos: activos cuya fecha esperada ya pasó
+    @Query("SELECT p FROM Prestamo p WHERE p.id_estado_prestamo = 2 AND p.fecha_devolucion_esperada < CURRENT_TIMESTAMP")
+    List<Prestamo> findOverdueNow();
 }
