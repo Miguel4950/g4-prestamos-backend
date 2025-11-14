@@ -1,182 +1,187 @@
 package co.edu.javeriana.prestamos.service;
 
+import co.edu.javeriana.prestamos.exception.BusinessException;
 import co.edu.javeriana.prestamos.model.Prestamo;
-import co.edu.javeriana.prestamos.repository.PrestamoRepository; // <-- REAL
 import co.edu.javeriana.prestamos.repository.LibroRepository;
-import org.springframework.beans.factory.annotation.Autowired;
+import co.edu.javeriana.prestamos.repository.PrestamoRepository;
+import co.edu.javeriana.prestamos.service.state.EstadoPrestamo;
+import co.edu.javeriana.prestamos.service.state.EstadoPrestamoFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional; // Importante para la BD
+import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
-import java.time.LocalDateTime;
-import java.util.stream.Collectors;
 
-@Service // Le dice a Spring que esto es la lógica de negocio
+@Service
 public class LoanService {
 
-    // Constantes de G1 para estados de préstamo
     public static final int ESTADO_SOLICITADO = 1;
     public static final int ESTADO_ACTIVO = 2;
     public static final int ESTADO_DEVUELTO = 3;
     public static final int ESTADO_VENCIDO = 4;
+    private static final long LOAN_DURATION_DAYS = 14;
 
-    // Cliente hacia el Catálogo (G3) en lugar de acceder a la BD de libros
     private final CatalogClient catalogClient;
     private final LibroRepository libroRepository;
     private final MappingService mappingService;
     private final PrestamoRepository prestamoRepository;
+    private final ReservationService reservationService;
 
-    public LoanService(CatalogClient catalogClient, LibroRepository libroRepository,
-                       MappingService mappingService, PrestamoRepository prestamoRepository) {
+    public LoanService(CatalogClient catalogClient,
+                       LibroRepository libroRepository,
+                       MappingService mappingService,
+                       PrestamoRepository prestamoRepository,
+                       ReservationService reservationService) {
         this.catalogClient = catalogClient;
         this.libroRepository = libroRepository;
         this.mappingService = mappingService;
         this.prestamoRepository = prestamoRepository;
+        this.reservationService = reservationService;
     }
 
-
-    // Esta es tu LÓGICA DE NEGOCIO (US_8) - AHORA CON BD REAL
-    @Transactional // Asegura que si algo falla, se hace rollback
-    public Prestamo solicitarPrestamo(Integer usuarioId, Integer libroId) throws Exception {
-
-        // 0. Mapear id de G3 -> id real de BD (G1) y validar existencia ANTES de reservar
+    @Transactional
+    public Prestamo solicitarPrestamo(Integer usuarioId, Integer libroId) {
         Integer dbLibroId = mappingService.mapToDbId(libroId);
-        if (dbLibroId == null) dbLibroId = libroId;
+        if (dbLibroId == null) {
+            dbLibroId = libroId;
+        }
         if (!libroRepository.existsById(dbLibroId)) {
-            throw new Exception("Error 400: El id_libro=" + dbLibroId + " no existe en la BD. Configure el mapeo BOOK_ID_MAP en G4.");
+            throw new BusinessException("Error 400: El id_libro=" + dbLibroId + " no existe en la BD. Configure el mapeo BOOK_ID_MAP en G4.");
+        }
+
+        markOverdueLoans();
+
+        List<Prestamo> prestamosDelUsuario = prestamoRepository.findActivosYVencidosByUsuarioId(usuarioId);
+        boolean tieneVencidos = prestamosDelUsuario.stream()
+                .anyMatch(p -> p.getId_estado_prestamo() == ESTADO_VENCIDO);
+        if (tieneVencidos) {
+            throw new BusinessException("Error 400: El usuario tiene préstamos vencidos.");
+        }
+
+        long prestamosNoDevueltos = prestamosDelUsuario.stream()
+                .filter(p -> {
+                    int estado = p.getId_estado_prestamo();
+                    return estado == ESTADO_SOLICITADO || estado == ESTADO_ACTIVO || estado == ESTADO_VENCIDO;
+                })
+                .count();
+        if (prestamosNoDevueltos >= 3) {
+            throw new BusinessException("Error 400: Límite de 3 préstamos alcanzado.");
         }
 
         boolean reservado = false;
         try {
-            // 1. Validar disponibilidad y reservar con el Catálogo (G3)
             reservado = catalogClient.reservarUno(String.valueOf(libroId));
             if (!reservado) {
-                throw new Exception("Error 400: Libro no disponible o no encontrado en Catálogo");
+                throw new BusinessException("Error 400: Libro no disponible o no encontrado en Catálogo.");
             }
 
-            // 2. Validar que el usuario pueda pedir prestado (con la consulta real)
-        List<Prestamo> prestamosDelUsuario = prestamoRepository.findActivosYVencidosByUsuarioId(usuarioId);
-
-        // 3. Regla US_22 (Must Have): Validar préstamos vencidos
-        boolean tieneVencidos = prestamosDelUsuario.stream()
-                .anyMatch(p -> p.getId_estado_prestamo() == ESTADO_VENCIDO);
-        if (tieneVencidos) {
-            throw new Exception("Error 400: El usuario tiene préstamos vencidos");
-        }
-        
-        // 4. Regla US_8: Límite de 3 préstamos
-        long prestamosActivos = prestamosDelUsuario.stream()
-                .filter(p -> p.getId_estado_prestamo() == ESTADO_ACTIVO)
-                .count();
-        if (prestamosActivos >= 3) {
-            throw new Exception("Error 400: Límite de 3 préstamos alcanzado");
-        }
-
-            // 5. ¡Todo en orden! Crear el préstamo
-            // Usamos null para que JPA genere el ID (AUTO_INCREMENT)
-            Prestamo nuevoPrestamo = new Prestamo(null, usuarioId, dbLibroId, ESTADO_SOLICITADO);
-
-            // 6. Guardar el préstamo en la BD REAL
+            LocalDateTime fechaDevolucion = LocalDateTime.now().plusDays(LOAN_DURATION_DAYS);
+            Prestamo nuevoPrestamo = new Prestamo(null, usuarioId, dbLibroId, ESTADO_SOLICITADO, fechaDevolucion);
             return prestamoRepository.save(nuevoPrestamo);
-
-        } catch (Exception e) {
-            // Compensación: si reservamos en catálogo pero falló la persistencia, devolver la unidad
+        } catch (RuntimeException e) {
             if (reservado) {
-                try { catalogClient.devolverUno(String.valueOf(libroId)); } catch (Exception ignored) {}
+                try {
+                    catalogClient.devolverUno(String.valueOf(libroId));
+                } catch (Exception ignored) {
+                }
             }
             throw e;
         }
     }
 
-    // Esta es tu LÓGICA DE NEGOCIO (US_22) - AHORA CON BD REAL
     public List<Prestamo> getMisPrestamos(Integer usuarioId) {
-        // Llama a la consulta real de la BD
+        markOverdueLoans();
         return prestamoRepository.findActivosYVencidosByUsuarioId(usuarioId);
     }
 
-    // -------- NUEVO: Obtener detalle de préstamo --------
     public Optional<Prestamo> getPrestamoById(Integer id) {
         return prestamoRepository.findById(id);
     }
 
-    // -------- NUEVO: Devolver préstamo --------
     @Transactional
-    public Prestamo devolverPrestamo(Integer prestamoId, Integer requesterId, boolean isPrivileged) throws Exception {
+    public Prestamo devolverPrestamo(Integer prestamoId, Integer requesterId, boolean isPrivileged) {
         Prestamo p = prestamoRepository.findById(prestamoId)
-                .orElseThrow(() -> new Exception("Error 404: Préstamo no encontrado"));
+                .orElseThrow(() -> new BusinessException("Error 404: Préstamo no encontrado."));
 
         if (!isPrivileged && !p.getId_usuario().equals(requesterId)) {
-            throw new Exception("Error 403: No autorizado");
+            throw new BusinessException("Error 403: No autorizado.");
         }
 
         if (p.getId_estado_prestamo() == ESTADO_DEVUELTO) {
-            throw new Exception("Error 400: El préstamo ya está devuelto");
+            throw new BusinessException("Error 400: El préstamo ya está devuelto.");
         }
 
-        // Incrementar disponibilidad en Catálogo antes de cerrar el préstamo
         boolean ok = catalogClient.devolverUno(String.valueOf(p.getId_libro()));
         if (!ok) {
-            throw new Exception("Error 500: No fue posible actualizar disponibilidad en Catálogo");
+            throw new RuntimeException("Error 500: No fue posible actualizar disponibilidad en Catálogo.");
         }
 
-        p.setId_estado_prestamo(ESTADO_DEVUELTO);
-        p.setFecha_devolucion_real(LocalDateTime.now());
-        return prestamoRepository.save(p);
+        try {
+            EstadoPrestamo estado = EstadoPrestamoFactory.fromCode(p.getId_estado_prestamo());
+            p = estado.devolver(p);
+        } catch (Exception e) {
+            throw new BusinessException(e.getMessage());
+        }
+        p = prestamoRepository.save(p);
+        try {
+            reservationService.notifyNextInQueue(p.getId_libro());
+        } catch (Exception ignored) {
+        }
+        return p;
     }
 
-    // -------- NUEVO: Renovar préstamo (una sola vez, +7 días) --------
     @Transactional
-    public Prestamo renovarPrestamo(Integer prestamoId, Integer requesterId) throws Exception {
+    public Prestamo renovarPrestamo(Integer prestamoId, Integer requesterId, boolean isPrivileged) {
         Prestamo p = prestamoRepository.findById(prestamoId)
-                .orElseThrow(() -> new Exception("Error 404: Préstamo no encontrado"));
+                .orElseThrow(() -> new BusinessException("Error 404: Préstamo no encontrado."));
 
-        if (!p.getId_usuario().equals(requesterId)) {
-            throw new Exception("Error 403: No autorizado");
+        if (!isPrivileged && !p.getId_usuario().equals(requesterId)) {
+            throw new BusinessException("Error 403: No autorizado.");
         }
 
-        if (p.getId_estado_prestamo() == ESTADO_VENCIDO) {
-            throw new Exception("Error 400: No se puede renovar un préstamo vencido");
+        try {
+            EstadoPrestamo estado = EstadoPrestamoFactory.fromCode(p.getId_estado_prestamo());
+            p = estado.renovar(p);
+        } catch (Exception e) {
+            throw new BusinessException(e.getMessage());
         }
-        if (p.getId_estado_prestamo() == ESTADO_DEVUELTO) {
-            throw new Exception("Error 400: El préstamo ya está devuelto");
-        }
-
-        // Regla: solo 1 renovación. Detectar si ya se extendió por encima de los 14 días originales.
-        LocalDateTime baseDue = p.getFecha_prestamo().plusDays(14);
-        boolean yaRenovado = p.getFecha_devolucion_esperada() != null && p.getFecha_devolucion_esperada().isAfter(baseDue);
-        if (yaRenovado) {
-            throw new Exception("Error 400: El préstamo ya fue renovado una vez");
-        }
-
-        // TODO: Verificar reservas pendientes para este libro (requiere módulo de reservas)
-
-        p.setFecha_devolucion_esperada(baseDue.plusDays(7));
         return prestamoRepository.save(p);
     }
 
-    // -------- NUEVO: Aprobar préstamo (SOLICITADO -> ACTIVO) --------
     @Transactional
-    public Prestamo aprobarPrestamo(Integer prestamoId) throws Exception {
+    public Prestamo aprobarPrestamo(Integer prestamoId) {
         Prestamo p = prestamoRepository.findById(prestamoId)
-                .orElseThrow(() -> new Exception("Error 404: Préstamo no encontrado"));
-        if (p.getId_estado_prestamo() != ESTADO_SOLICITADO) {
-            throw new Exception("Error 400: Solo se pueden aprobar préstamos en estado SOLICITADO");
+                .orElseThrow(() -> new BusinessException("Error 404: Préstamo no encontrado."));
+        try {
+            EstadoPrestamo estado = EstadoPrestamoFactory.fromCode(p.getId_estado_prestamo());
+            p = estado.aprobar(p);
+        } catch (Exception e) {
+            throw new BusinessException(e.getMessage());
         }
-        p.setId_estado_prestamo(ESTADO_ACTIVO);
         return prestamoRepository.save(p);
     }
 
-    // -------- NUEVO: Listar préstamos (opcional por estado) --------
     public List<Prestamo> listarPrestamos(Integer estado) {
+        markOverdueLoans();
         if (estado == null) {
             return prestamoRepository.findAll();
         }
         return prestamoRepository.findByEstado(estado);
     }
 
-    // -------- NUEVO: Listar préstamos vencidos --------
     public List<Prestamo> listarVencidos() {
-        return prestamoRepository.findOverdueNow();
+        markOverdueLoans();
+        return prestamoRepository.findByEstado(ESTADO_VENCIDO);
+    }
+
+    private void markOverdueLoans() {
+        List<Prestamo> overdue = prestamoRepository.findOverdueNow();
+        if (overdue.isEmpty()) {
+            return;
+        }
+        overdue.forEach(p -> p.setId_estado_prestamo(ESTADO_VENCIDO));
+        prestamoRepository.saveAll(overdue);
     }
 }
+
