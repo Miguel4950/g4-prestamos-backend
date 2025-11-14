@@ -2,6 +2,7 @@ package co.edu.javeriana.prestamos.service;
 
 import co.edu.javeriana.prestamos.model.Reserva;
 import co.edu.javeriana.prestamos.notification.NotificationService;
+import co.edu.javeriana.prestamos.repository.ConfiguracionRepository;
 import co.edu.javeriana.prestamos.repository.ReservaRepository;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -20,6 +21,7 @@ class ReservationServiceTest {
         MappingService mapping = mock(MappingService.class);
         CatalogClient client = mock(CatalogClient.class);
         NotificationService notif = mock(NotificationService.class);
+        ConfiguracionRepository configuracionRepository = mock(ConfiguracionRepository.class);
 
         when(mapping.mapToDbId(123)).thenReturn(96);
         CatalogClient.BookDto book = new CatalogClient.BookDto();
@@ -34,7 +36,9 @@ class ReservationServiceTest {
             return r;
         });
 
-        ReservationService service = new ReservationService(repo, mapping, client, notif);
+        when(configuracionRepository.findByClave(anyString())).thenReturn(java.util.Optional.empty());
+
+        ReservationService service = new ReservationService(repo, mapping, client, notif, configuracionRepository);
         Reserva r = service.createReservation(7, 123);
 
         assertNotNull(r.getId_reserva());
@@ -43,4 +47,3 @@ class ReservationServiceTest {
         assertEquals(1, r.getId_estado_reserva());
     }
 }
-
