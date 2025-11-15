@@ -22,7 +22,7 @@ public class CatalogClient {
         this.integrationAuthClient = integrationAuthClient;
     }
 
-    @Value("${catalog.base-url:http://localhost:8080}")
+    @Value("${catalog.base-url:http://localhost:8082}")
     private String baseUrl;
 
     public BookDto getBook(String id) {
@@ -36,9 +36,6 @@ public class CatalogClient {
         }
     }
 
-    /**
-     * Intenta reservar una unidad del libro en el Catálogo (G3).
-     */
     public boolean reservarUno(String id) {
         BookDto book = getBook(id);
         if (book == null || book.cantidadDisponible == null || book.cantidadDisponible <= 0) {
@@ -47,7 +44,6 @@ public class CatalogClient {
         return updateAvailability(id, -1);
     }
 
-    /** Devuelve una unidad al Catálogo (incrementa disponibilidad en +1). */
     public boolean devolverUno(String id) {
         return updateAvailability(id, +1);
     }

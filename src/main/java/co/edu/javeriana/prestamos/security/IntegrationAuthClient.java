@@ -16,9 +16,9 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * Servicio auxiliar para obtener un token JWT del Grupo 2 usando
- * un usuario de servicio. El token se cachea por unos minutos para
- * evitar golpear el endpoint de autenticación en cada solicitud.
+ * Cliente simple para obtener un JWT desde el servicio de autenticación (G2)
+ * usando un usuario técnico. El token se cachea para evitar solicitarlo en
+ * cada préstamo y se renueva automáticamente cuando está por expirar.
  */
 @Component
 public class IntegrationAuthClient {
@@ -26,22 +26,24 @@ public class IntegrationAuthClient {
     private static final Logger LOGGER = LoggerFactory.getLogger(IntegrationAuthClient.class);
 
     private final RestTemplate restTemplate = new RestTemplate();
-
-    @Value("${auth.base-url:http://localhost:8080/api/auth}")
-    private String authBaseUrl;
-
-    @Value("${integration.user:}")
-    private String integrationUser;
-
-    @Value("${integration.password:}")
-    private String integrationPassword;
-
     private final AtomicReference<String> cachedToken = new AtomicReference<>(null);
     private volatile Instant tokenExpiresAt = Instant.EPOCH;
 
+    private final String authBaseUrl;
+    private final String username;
+    private final String password;
+
+    public IntegrationAuthClient(
+            @Value("${auth.base-url:http://localhost:8080/api/auth}") String authBaseUrl,
+            @Value("${integration.user:}") String username,
+            @Value("${integration.password:}") String password) {
+        this.authBaseUrl = authBaseUrl;
+        this.username = username;
+        this.password = password;
+    }
+
     public String getToken() {
-        if (integrationUser == null || integrationUser.isBlank()) {
-            LOGGER.warn("integration.user no está configurado; no se puede autenticar contra G2");
+        if (username == null || username.isBlank() || password == null || password.isBlank()) {
             return null;
         }
         if (Instant.now().isAfter(tokenExpiresAt.minus(Duration.ofMinutes(1)))) {
@@ -60,8 +62,8 @@ public class IntegrationAuthClient {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
             Map<String, String> payload = Map.of(
-                    "username", integrationUser,
-                    "contrasena", integrationPassword
+                    "username", username,
+                    "contrasena", password
             );
             HttpEntity<Map<String, String>> entity = new HttpEntity<>(payload, headers);
             ResponseEntity<LoginResponse> response = restTemplate.postForEntity(url, entity, LoginResponse.class);
@@ -70,7 +72,7 @@ public class IntegrationAuthClient {
                 tokenExpiresAt = Instant.now().plus(Duration.ofHours(6));
                 LOGGER.info("Token de integración renovado correctamente");
             } else {
-                throw new IllegalStateException("Respuesta inválida del servicio de auth");
+                throw new IllegalStateException("Respuesta no válida del servicio de autenticación");
             }
         } catch (Exception e) {
             LOGGER.error("No se pudo obtener token de autenticación para integración", e);
