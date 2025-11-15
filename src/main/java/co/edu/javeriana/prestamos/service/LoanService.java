@@ -2,9 +2,12 @@ package co.edu.javeriana.prestamos.service;
 
 import co.edu.javeriana.prestamos.exception.BusinessException;
 import co.edu.javeriana.prestamos.model.Prestamo;
+import co.edu.javeriana.prestamos.model.Usuario;
 import co.edu.javeriana.prestamos.repository.ConfiguracionRepository;
 import co.edu.javeriana.prestamos.repository.LibroRepository;
 import co.edu.javeriana.prestamos.repository.PrestamoRepository;
+import co.edu.javeriana.prestamos.repository.UsuarioRepository;
+import co.edu.javeriana.prestamos.repository.UsuarioRepository;
 import co.edu.javeriana.prestamos.service.state.EstadoPrestamo;
 import co.edu.javeriana.prestamos.service.state.EstadoPrestamoFactory;
 import org.springframework.stereotype.Service;
@@ -34,6 +37,7 @@ public class LoanService {
     private final PrestamoRepository prestamoRepository;
     private final ReservationService reservationService;
     private final ConfiguracionRepository configuracionRepository;
+    private final UsuarioRepository usuarioRepository;
     private final Map<String, Integer> configuracionCache = new ConcurrentHashMap<>();
 
     public LoanService(CatalogClient catalogClient,
@@ -41,13 +45,15 @@ public class LoanService {
                        MappingService mappingService,
                        PrestamoRepository prestamoRepository,
                        ReservationService reservationService,
-                       ConfiguracionRepository configuracionRepository) {
+                       ConfiguracionRepository configuracionRepository,
+                       UsuarioRepository usuarioRepository) {
         this.catalogClient = catalogClient;
         this.libroRepository = libroRepository;
         this.mappingService = mappingService;
         this.prestamoRepository = prestamoRepository;
         this.reservationService = reservationService;
         this.configuracionRepository = configuracionRepository;
+        this.usuarioRepository = usuarioRepository;
     }
 
     @Transactional
@@ -192,6 +198,18 @@ public class LoanService {
         return prestamoRepository.findByEstado(ESTADO_VENCIDO);
     }
 
+    public Map<String, Object> getUsuarioResumen(Integer idUsuario) {
+        if (idUsuario == null) return Map.of();
+        Usuario usuario = usuarioRepository.findById(idUsuario).orElse(null);
+        if (usuario == null) return Map.of();
+        return Map.of(
+                "id", usuario.getId_usuario(),
+                "nombre", usuario.getNombre(),
+                "username", usuario.getUsername(),
+                "tipo", usuario.getId_tipo_usuario()
+        );
+    }
+
     private void markOverdueLoans() {
         List<Prestamo> overdue = prestamoRepository.findOverdueNow();
         if (overdue.isEmpty()) {
@@ -220,4 +238,3 @@ public class LoanService {
         }
     }
 }
-

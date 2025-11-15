@@ -10,7 +10,9 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @RestController
@@ -106,7 +108,13 @@ public class LoanController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body("No autorizado");
         }
         List<Prestamo> prestamos = loanService.listarPrestamos(estado);
-        return ResponseEntity.ok(prestamos.stream().map(LoanResponse::new).collect(Collectors.toList()));
+        List<Map<String, Object>> body = prestamos.stream().map(p -> {
+            Map<String, Object> map = new HashMap<>();
+            map.put("prestamo", new LoanResponse(p));
+            map.put("usuario", loanService.getUsuarioResumen(p.getId_usuario()));
+            return map;
+        }).collect(Collectors.toList());
+        return ResponseEntity.ok(body);
     }
 
     @GetMapping("/loans/overdue")
@@ -139,4 +147,3 @@ public class LoanController {
         return defaultStatus;
     }
 }
-
