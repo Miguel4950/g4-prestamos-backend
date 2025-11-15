@@ -5,6 +5,7 @@ import co.edu.javeriana.prestamos.model.Prestamo;
 import co.edu.javeriana.prestamos.repository.ConfiguracionRepository;
 import co.edu.javeriana.prestamos.repository.LibroRepository;
 import co.edu.javeriana.prestamos.repository.PrestamoRepository;
+import co.edu.javeriana.prestamos.repository.UsuarioRepository;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDateTime;
@@ -24,6 +25,7 @@ class LoanServiceRenovarTest {
         PrestamoRepository prestamoRepo = mock(PrestamoRepository.class);
         ReservationService reservationService = mock(ReservationService.class);
         ConfiguracionRepository configuracionRepository = mock(ConfiguracionRepository.class);
+        UsuarioRepository usuarioRepository = mock(UsuarioRepository.class);
 
         LocalDateTime now = LocalDateTime.now();
         Prestamo prestamo = new Prestamo(10, 7, 96, LoanService.ESTADO_ACTIVO, now.plusDays(14));
@@ -33,7 +35,7 @@ class LoanServiceRenovarTest {
         when(configuracionRepository.findByClave(anyString())).thenReturn(Optional.empty());
         when(prestamoRepo.save(prestamo)).thenReturn(prestamo);
 
-        LoanService service = new LoanService(catalog, libroRepo, mapping, prestamoRepo, reservationService, configuracionRepository);
+        LoanService service = new LoanService(catalog, libroRepo, mapping, prestamoRepo, reservationService, configuracionRepository, usuarioRepository);
         Prestamo actualizado = service.renovarPrestamo(10, 7, false);
 
         assertEquals(now.plusDays(21), actualizado.getFecha_devolucion_esperada());
@@ -48,6 +50,7 @@ class LoanServiceRenovarTest {
         PrestamoRepository prestamoRepo = mock(PrestamoRepository.class);
         ReservationService reservationService = mock(ReservationService.class);
         ConfiguracionRepository configuracionRepository = mock(ConfiguracionRepository.class);
+        UsuarioRepository usuarioRepository = mock(UsuarioRepository.class);
 
         LocalDateTime now = LocalDateTime.now();
         Prestamo prestamo = new Prestamo(11, 8, 97, LoanService.ESTADO_ACTIVO, now.plusDays(21));
@@ -56,7 +59,7 @@ class LoanServiceRenovarTest {
         when(prestamoRepo.findById(11)).thenReturn(Optional.of(prestamo));
         when(configuracionRepository.findByClave(anyString())).thenReturn(Optional.empty());
 
-        LoanService service = new LoanService(catalog, libroRepo, mapping, prestamoRepo, reservationService, configuracionRepository);
+        LoanService service = new LoanService(catalog, libroRepo, mapping, prestamoRepo, reservationService, configuracionRepository, usuarioRepository);
         assertThrows(BusinessException.class, () -> service.renovarPrestamo(11, 8, false));
         verify(prestamoRepo, never()).save(any());
     }
@@ -69,13 +72,13 @@ class LoanServiceRenovarTest {
         PrestamoRepository prestamoRepo = mock(PrestamoRepository.class);
         ReservationService reservationService = mock(ReservationService.class);
         ConfiguracionRepository configuracionRepository = mock(ConfiguracionRepository.class);
+        UsuarioRepository usuarioRepository = mock(UsuarioRepository.class);
 
         Prestamo prestamo = new Prestamo(12, 9, 98, LoanService.ESTADO_SOLICITADO, LocalDateTime.now().plusDays(14));
         when(prestamoRepo.findById(12)).thenReturn(Optional.of(prestamo));
 
-        LoanService service = new LoanService(catalog, libroRepo, mapping, prestamoRepo, reservationService, configuracionRepository);
+        LoanService service = new LoanService(catalog, libroRepo, mapping, prestamoRepo, reservationService, configuracionRepository, usuarioRepository);
         assertThrows(BusinessException.class, () -> service.renovarPrestamo(12, 9, false));
         verify(prestamoRepo, never()).save(any());
     }
 }
-

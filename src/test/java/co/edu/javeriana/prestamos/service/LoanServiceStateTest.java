@@ -4,6 +4,7 @@ import co.edu.javeriana.prestamos.model.Prestamo;
 import co.edu.javeriana.prestamos.repository.LibroRepository;
 import co.edu.javeriana.prestamos.repository.PrestamoRepository;
 import co.edu.javeriana.prestamos.repository.ConfiguracionRepository;
+import co.edu.javeriana.prestamos.repository.UsuarioRepository;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -22,6 +23,7 @@ class LoanServiceStateTest {
         PrestamoRepository prestamoRepo = mock(PrestamoRepository.class);
         ReservationService reservationService = mock(ReservationService.class);
         ConfiguracionRepository configuracionRepository = mock(ConfiguracionRepository.class);
+        UsuarioRepository usuarioRepository = mock(UsuarioRepository.class);
 
         Prestamo p = new Prestamo(10, 7, 96, LoanService.ESTADO_SOLICITADO, LocalDateTime.now().plusDays(7));
         when(prestamoRepo.findById(10)).thenReturn(Optional.of(p));
@@ -29,7 +31,7 @@ class LoanServiceStateTest {
         when(prestamoRepo.save(cap.capture())).thenAnswer(a -> cap.getValue());
         when(configuracionRepository.findByClave(anyString())).thenReturn(Optional.empty());
 
-        LoanService service = new LoanService(catalog, libroRepo, mapping, prestamoRepo, reservationService, configuracionRepository);
+        LoanService service = new LoanService(catalog, libroRepo, mapping, prestamoRepo, reservationService, configuracionRepository, usuarioRepository);
         Prestamo actualizado = service.aprobarPrestamo(10);
         assertEquals(LoanService.ESTADO_ACTIVO, actualizado.getId_estado_prestamo());
     }
