@@ -124,7 +124,13 @@ public class LoanController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body("No autorizado");
         }
         List<Prestamo> vencidos = loanService.listarVencidos();
-        return ResponseEntity.ok(vencidos.stream().map(LoanResponse::new).collect(Collectors.toList()));
+        List<Map<String, Object>> body = vencidos.stream().map(p -> {
+            Map<String, Object> map = new HashMap<>();
+            map.put("prestamo", new LoanResponse(p));
+            map.put("usuario", loanService.getUsuarioResumen(p.getId_usuario()));
+            return map;
+        }).collect(Collectors.toList());
+        return ResponseEntity.ok(body);
     }
 
     private CustomUserDetails currentUser() {
